@@ -1,0 +1,255 @@
+---
+title: "fplproj"
+output: pdf_document
+date: "2025-05-28"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# FPL Analytics Dashboard
+
+## Overview
+
+This R Markdown document describes the **Fantasy Premier League (FPL) Analytics Dashboard**, a Shiny application designed to assist FPL managers in optimizing team selections. The app fetches real-time data from the FPL API, processes player and team statistics, and provides interactive visualizations and tables to analyze player performance, team dominance, and squad selection. Key features include:
+
+- **Player Matrix**: Interactive scatter plot of player points vs. cost.
+- **Elite Squad**: Displays the top 15 players (2 GKs, 5 DEFs, 5 MIDs, 3 FWDs) based on points.
+- **Versus Scanner**: Compares two players across key metrics.
+- **Position Nexus**: Bar chart of player distribution by position.
+- **Team Dominance**: Visualizes top teams by total points.
+- **Squad Forge**: Filters players by team for squad planning.
+- **Stats Viewer**: Radar plot of individual player stats.
+
+This document includes key code snippets and setup instructions to run the app locally. For the full source code, see the GitHub repository.
+
+## Setup
+
+Install the required R packages to run the Shiny app:
+
+```R
+# Install packages
+install.packages(c("shiny", "shinydashboard", "bslib", "shinyWidgets", "shinycssloaders", 
+                   "DT", "reactable", "plotly", "ggplot2", "dplyr", "httr", "jsonlite", 
+                   "tidyr", "shinyjs", "shinyanimate"))
+```
+
+Load the libraries:
+
+```R
+library(shiny)
+library(shinydashboard)
+library(bslib)
+library(shinyWidgets)
+library(shinycssloaders)
+library(DT)
+library(reactable)
+library(plotly)
+library(ggplot2)
+library(dplyr)
+library(httr)
+library(jsonlite)
+library(tidyr)
+library(shinyjs)
+library(shinyanimate)
+```
+
+## Data Fetching and Processing
+
+The app fetches data from the FPL API and processes it to include player names, teams, positions, costs, and value metrics.
+
+```R
+# Fetch FPL data with error handling
+fetch_fpl_data <- function() {
+  response <- tryCatch(
+    GET("https://fantasy.premierleague.com/api/bootstrap-static/"),
+    error = function(e) {
+      stop("Failed to fetch data from FPL API: ", e$message)
+    }
+  )
+  if (http_error(response)) {
+    stop("HTTP error fetching FPL API data: ", status_code(response))
+  }
+  content(response, as = "parsed", simplifyDataFrame = TRUE)
+}
+
+# Load and process data
+data <- fetch_fpl_data()
+players <- data$elements
+teams <- data$teams
+positions <- data$element_types
+
+players <- players %>%
+  mutate(
+    TEAMS = teams$name[team],
+    position = positions$singular_name[element_type],
+    cost_million = now_cost / 10,
+    cost_pretty = paste0("£", format(round(cost_million, 1), nsmall = 1)),
+    value = ifelse(cost_million > 0, round(total_points / cost_million, 2), NA),
+    full_name = paste(first_name, second_name)
+  )
+players_filtered <- players %>% filter(minutes > 500)
+```
+
+This code retrieves player, team, and position data, then filters players with over 500 minutes played to focus on active contributors.
+
+## UI Design
+
+The Shiny app uses a futuristic, responsive interface with a custom theme, including light and dark modes, and a professional layout powered by `shinydashboard`.
+
+```R
+# UI Definition
+fpl_ui <- dashboardPage(
+  skin = "black",
+  dashboardHeader(title = NULL),
+  dashboardSidebar(
+    div(
+      style = "
+        padding: 20px 12px;
+        text-align: center;
+        background: linear-gradient(180deg, #1A2533, #2D3A4F);
+        border-bottom: 2px solid #00D4FF;
+        margin-bottom: 20px;
+        box-shadow: 0 0 10px rgba(0, 212, 255, 0.3);",
+      div(
+        style = "margin: 20px 0;",
+        tags$label(
+          class = "switch-pro",
+          tags$input(id = "dark_mode_toggle", type = "checkbox"),
+          tags$span(class = "slider-pro"),
+          tags$span(class = "toggle-label")
+        )
+      )
+    ),
+    sidebarMenu(
+      menuItem("Player Matrix", tabName = "playerExplorer", icon = icon("grid", lib = "font-awesome")),
+      menuItem("Elite Squad", tabName = "bestXI", icon = icon("users-gear", lib = "font-awesome")),
+      menuItem("Versus Scanner", tabName = "playerComparison", icon = icon("scale-balanced")),
+      menuItem("Position Nexus", tabName = "positionDistribution", icon = icon("chart-simple")),
+      menuItem("Team Dominance", tabName = "topTeams", icon = icon("trophy")),
+      menuItem("Squad Forge", tabName = "teamSelector", icon = icon("gears")),
+      menuItem("Stats Viewer", tabName = "statsExplorer", icon = icon("chart-radar"))
+    ),
+    pickerInput("position", "Position:", choices = c("All", unique(players_filtered$position)), selected = "All", multiple = FALSE,
+                options = list(`style` = "btn-pro")),
+    pickerInput("team", "Team:", choices = c("All", sort(unique(players_filtered$TEAMS))), selected = "All", multiple = FALSE,
+                options = list(`style` = "btn-pro")),
+    sliderInput("cost", "Max Cost (£M):", min = 4.0, max = 13.0, value = 13.0, step = 0.1, animate = TRUE, pre = "£"),
+    sliderInput("minutes", "Min Minutes Played:", min = 0, max = max(players_filtered$minutes, na.rm = TRUE), value = 500, step = 100, animate = TRUE)
+  ),
+  dashboardBody(
+    useShinyjs(),
+    withAnim(),
+    tags$head(
+      tags$link(href = "https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700&display=swap", rel = "stylesheet"),
+      tags$style(HTML('
+        /* Custom CSS for futuristic theme */
+        .main-header { background: linear-gradient(90deg, #1A2533 0%, #00D4FF 100%) !important; }
+        .fpl-glow-text { font-family: "Orbitron", sans-serif; font-size: 2rem; color: #E0E6F0; }
+        /* Additional styles omitted for brevity */
+      ')),
+      tags$script(HTML("
+        document.addEventListener('DOMContentLoaded', function() {
+          $(document).on('shiny:connected', function() {
+            document.documentElement.setAttribute('data-bs-theme', 'light');
+            $('.main-header .navbar').html(
+              `<div id='custom-fpl-header' class='fpl-header-bar'>
+                <div class='fpl-header-title'>
+                  <img src='https://upload.wikimedia.org/wikipedia/en/f/f2/Premier_League_Logo.svg' 
+                       class='fpl-logo' alt='Premier League Logo'>
+                  <span class='fpl-glow-text'>FPL Analytics</span>
+                </div>
+              </div>`
+            );
+          });
+        });
+      "))
+    ),
+    tabItems(
+      tabItem("playerExplorer", fluidRow(
+        div(class = "plot-container", withSpinner(plotlyOutput("interactivePlot", height = "550px"), type = 8, color = "#00D4FF")),
+        box(title = span("Top 10 Value Players", class = "box-title"),
+            withSpinner(reactableOutput("topPlayersReactable"), type = 8, color = "#00D4FF"), width = 12)
+      )),
+      tabItem("bestXI", fluidRow(
+        box(title = span("Elite Squad (2 GK, 5 DEF, 5 MID, 3 FWD)", class = "box-title"),
+            withSpinner(DTOutput("bestXI"), type = 8, color = "#00D4FF"), width = 12)
+      ))
+      # Other tabItems omitted for brevity
+    )
+  )
+)
+```
+
+The UI includes a sidebar with filters (position, team, cost, minutes) and tabs for different analyses, styled with a futuristic theme using the Orbitron font and neon glow effects.
+
+## Server Logic
+
+The server logic handles data filtering, visualization rendering, and table generation. Below is an example of the interactive scatter plot for the Player Matrix.
+
+```R
+# Server Logic (Partial)
+fpl_server <- function(input, output, session) {
+  thematic::thematic_shiny()
+  
+  # Reactive filtered data
+  filtered <- reactive({
+    data <- players_filtered
+    if (!is.null(input$position) && input$position != "All") {
+      data <- data %>% filter(position == input$position)
+    }
+    data <- data %>%
+      filter(cost_million <= input$cost, minutes >= input$minutes)
+    if (!is.null(input$team) && input$team != "All") {
+      data <- data %>% filter(TEAMS == input$team)
+    }
+    data
+  })
+  
+  # Interactive scatter plot
+  output$interactivePlot <- renderPlotly({
+    colors <- list(text = "#E0E6F0", axis = "#A0B1C6", bg = "#1A2533", font = "Orbitron", accent = "#00D4FF", secondary = "#FF6B6B")
+    p <- ggplot(
+      filtered(),
+      aes(
+        x = cost_million,
+        y = total_points,
+        color = TEAMS,
+        text = paste(full_name, "<br>Team:", TEAMS, "<br>Cost: £", cost_million, "<br>Points:", total_points)
+      )
+    ) +
+      geom_point(size = 4, alpha = 0.9, aes(shape = position)) +
+      labs(x = "Cost (£M)", y = "Total Points", title = "Points vs Cost") +
+      theme_minimal(base_size = 16, base_family = colors$font)
+    ggplotly(p, tooltip = "text") %>%
+      layout(
+        dragmode = "pan",
+        font = list(family = colors$font, color = colors$text),
+        plot_bgcolor = "transparent",
+        paper_bgcolor = "transparent"
+      )
+  })
+}
+```
+
+This code filters players based on user inputs and renders an interactive scatter plot using `plotly` to show points vs. cost, with tooltips displaying player details.
+
+## Running the App
+
+To run the app, execute the following:
+
+```R
+shinyApp(ui = fpl_ui, server = fpl_server)
+```
+
+Ensure an active internet connection to fetch data from the FPL API. The app requires approximately 2–3 seconds to load data and render visualizations.
+
+## Features and Usage
+
+- **Filters**: Use sidebar inputs to filter by position, team, cost, and minutes played.
+- **Visualizations**: Interactive plots (scatter, bar, radar) allow zooming and hovering for details.
+- **Tables**: Reactable and DT tables display top players and squads with sortable columns.
+- **Theme**: Toggle between light and dark modes for a customized experience.
+
+For a live demo, deploy the app on a Shiny server or run locally. Contributions and feedback are welcome on the GitHub repository.
