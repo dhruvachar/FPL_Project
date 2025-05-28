@@ -1,37 +1,40 @@
-⚽ Fantasy Premier League (FPL) Analytics Dashboard
-An interactive and visually rich dashboard built in R Shiny for analyzing Fantasy Premier League data in real-time. This project fetches data from the official FPL API and provides actionable insights to help FPL managers optimize team selection, evaluate player performance, and make informed gameweek decisions.
+# ⚽ Fantasy Premier League (FPL) Analytics Dashboard
 
-🚀 Features
-Real-time FPL Data Integration using the official FPL API
+An interactive and visually rich dashboard built in **R Shiny** for analyzing Fantasy Premier League data in real-time. This project fetches data from the official FPL API and provides actionable insights to help FPL managers optimize team selection, evaluate player performance, and make informed gameweek decisions.
 
-Interactive Visualizations with plotly, ggplot2, and reactable
+## 🚀 Features
 
-Best XI Generator based on total points and value metrics
+- **Real-time FPL Data Integration** using the official FPL API  
+- **Interactive Visualizations** with `plotly`, `ggplot2`, and `reactable`  
+- **Best XI Generator** based on total points and value metrics  
+- **Player Comparison Tool** to evaluate performance head-to-head  
+- **Position and Team Insights** with dynamic bar charts and filters  
+- **Team Selector** to explore full squads by club  
+- **Modern UI/UX** with dark/light mode toggle and custom styling
 
-Player Comparison Tool to evaluate performance head-to-head
+## 🧰 Tech Stack
 
-Position and Team Insights with dynamic bar charts and filters
+- **R**  
+- **R Shiny**  
+- **Shinydashboard**  
+- **dplyr**  
+- **ggplot2**  
+- **plotly**  
+- **reactable**  
+- **jsonlite**  
+- **httr**
 
-Team Selector to explore full squads by club
+## 📊 Skills Demonstrated
 
-Modern UI/UX with dark/light mode toggle and custom styling
+- Data Wrangling & Transformation  
+- API Integration & Error Handling  
+- Dashboard Design & User Interaction  
+- Data Visualization & Statistical Summaries
 
-🧰 Built With
-R, R Shiny, Shinydashboard, dplyr, ggplot2, plotly, reactable, jsonlite, httr
+## 📦 Future Improvements
 
-📊 Skills Demonstrated
-Data Wrangling & Transformation
+- Gameweek-wise predictions  
+- Historical trend analysis  
+- Export to Excel or PDF reports
 
-API Integration & Error Handling
-
-Dashboard Design & User Interaction
-
-Data Visualization & Statistical Summaries
-
-📦 Future Improvements
-Gameweek-wise predictions
-
-Historical trend analysis
-
-Export to Excel or PDF reports
 
