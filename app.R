@@ -8,71 +8,10 @@ library(reactable)
 library(plotly)
 library(ggplot2)
 library(dplyr)
-library(httr)
-library(jsonlite)
-library(tidyr)
 library(shinyjs)
 library(shinyanimate)
-
-# Fetch FPL data with error handling
-fetch_fpl_data <- function() {
-  response <- tryCatch(
-    GET("https://fantasy.premierleague.com/api/bootstrap-static/"),
-    error = function(e) {
-      stop("Failed to fetch data from FPL API: ", e$message)
-    }
-  )
-  if (http_error(response)) {
-    stop("HTTP error fetching FPL API data: ", status_code(response))
-  }
-  content(response, as = "parsed", simplifyDataFrame = TRUE)
-}
-
-data <- fetch_fpl_data()
-players <- data$elements
-teams <- data$teams
-positions <- data$element_types
-
-# Data processing
-players <- players %>%
-  mutate(
-    TEAMS = teams$name[team],
-    position = positions$singular_name[element_type],
-    cost_million = now_cost / 10,
-    cost_pretty = paste0("£", format(round(cost_million, 1), nsmall = 1)),
-    value = ifelse(cost_million > 0, round(total_points / cost_million, 2), NA),
-    full_name = paste(first_name, second_name)
-  )
-players_filtered <- players %>% filter(minutes > 500)
-
-# Debug data
-print("Number of rows in players_filtered:")
-print(nrow(players_filtered))
-print("Unique positions:")
-print(unique(players_filtered$position))
-
-# Updated professional color scheme
-get_plot_colors <- function(dark_mode) {
-  if (isTRUE(dark_mode)) {
-    list(
-      text = "#E0E6F0",
-      axis = "#A0B1C6",
-      bg = "#1A2533",
-      font = "Orbitron",
-      accent = "#00D4FF",
-      secondary = "#FF6B6B"
-    )
-  } else {
-    list(
-      text = "#1A2533",
-      axis = "#4A5568",
-      bg = "#F7FAFC",
-      font = "Orbitron",
-      accent = "#0077B6",
-      secondary = "#F4A261"
-    )
-  }
-}
+source("R/data_processing.R")
+source("R/plot_utils.R")
 
 # UI Definition
 fpl_ui <- dashboardPage(
@@ -603,15 +542,6 @@ fpl_server <- function(input, output, session) {
     data
   })
   
-  best_15 <- reactive({
-    gk <- players_filtered %>% filter(position == "Goalkeeper") %>% arrange(desc(total_points)) %>% head(2)
-    def <- players_filtered %>% filter(position == "Defender") %>% arrange(desc(total_points)) %>% head(5)
-    mid <- players_filtered %>% filter(position == "Midfielder") %>% arrange(desc(total_points)) %>% head(5)
-    fwd <- players_filtered %>% filter(position == "Forward") %>% arrange(desc(total_points)) %>% head(3)
-    bind_rows(gk, def, mid, fwd) %>%
-      arrange(factor(position, levels = c("Goalkeeper", "Defender", "Midfielder", "Forward")), desc(total_points))
-  })
-  
   output$bestXI <- renderDT({
     dat <- best_15() %>%
       select(
@@ -637,292 +567,42 @@ fpl_server <- function(input, output, session) {
     )
   })
   
-  get_plot_colors <- reactive({
-    if (isTRUE(input$dark_mode_toggle)) {
-      list(
-        text = "#E0E6F0",
-        axis = "#A0B1C6",
-        bg = "#1A2533",
-        font = "Orbitron",
-        accent = "#00D4FF",
-        secondary = "#FF6B6B"
-      )
-    } else {
-      list(
-        text = "#1A2533",
-        axis = "#4A5568",
-        bg = "#F7FAFC",
-        font = "Orbitron",
-        accent = "#0077B6",
-        secondary = "#F4A261"
-      )
-    }
-  })
-  
   output$interactivePlot <- renderPlotly({
-    colors <- get_plot_colors()
-    p <- ggplot(
-      filtered(),
-      aes(
-        x = cost_million,
-        y = total_points,
-        color = TEAMS,
-        text = paste(full_name, "<br>Team:", TEAMS, "<br>Cost: £", cost_million, "<br>Points:", total_points)
-      )
-    ) +
-      geom_point(size = 4, alpha = 0.9, aes(shape = position)) +
-      labs(x = "Cost (£M)", y = "Total Points", title = "Points vs Cost") +
-      theme_minimal(base_size = 16, base_family = colors$font) +
-      theme(
-        plot.title = element_text(color = colors$text, face = "bold", size = 20, hjust = 0.5),
-        axis.title = element_text(color = colors$text, size = 14),
-        axis.text = element_text(color = colors$axis, size = 12),
-        legend.title = element_text(color = colors$text, size = 12),
-        legend.text = element_text(color = colors$axis, size = 10),
-        panel.background = element_rect(fill = "transparent"),
-        plot.background = element_rect(fill = "transparent", color = NA),
-        panel.grid.major = element_line(color = paste0(colors$axis, "33"), size = 0.3),
-        panel.grid.minor = element_blank()
-      )
-    ggplotly(p, tooltip = "text") %>%
-      layout(
-        dragmode = "pan",
-        font = list(family = colors$font, color = colors$text),
-        plot_bgcolor = "transparent",
-        paper_bgcolor = "transparent",
-        hoverlabel = list(
-          bgcolor = colors$bg,
-          font = list(color = colors$text, family = colors$font),
-          bordercolor = colors$accent
-        )
-      ) %>%
-      animation_opts(500, easing = "cubic-in-out")
+    colors <- get_plot_colors(input$dark_mode_toggle)
+    plot_interactive_scatter(filtered(), colors)
   })
   
   output$topPlayersReactable <- renderReactable({
-    colors <- get_plot_colors()
-    data <- filtered() %>%
-      arrange(desc(value)) %>%
-      select(full_name, TEAMS, Position = position, total_points, `Cost(millions)` = cost_pretty, value) %>%
-      head(10)
-    
-    if (nrow(data) == 0) {
-      return(reactable(
-        data.frame(Message = "No players match the selected criteria"),
-        theme = reactableTheme(
-          color = colors$text,
-          backgroundColor = "transparent",
-          borderColor = colors$accent,
-          headerStyle = list(
-            backgroundColor = colors$bg,
-            color = colors$text,
-            fontFamily = colors$font,
-            borderBottom = paste0("1px solid ", colors$accent)
-          ),
-          cellStyle = list(
-            fontFamily = colors$font,
-            transition = "all 0.3s"
-          )
-        )
-      ))
-    }
-    
-    reactable(
-      data,
-      columns = list(
-        full_name = colDef(name = "Player", minWidth = 150),
-        TEAMS = colDef(name = "Team", minWidth = 120),
-        Position = colDef(name = "Position", minWidth = 100),
-        total_points = colDef(name = "Total Points", minWidth = 100),
-        `Cost(millions)` = colDef(name = "Cost (£M)", minWidth = 100),
-        value = colDef(name = "Value", minWidth = 100, format = colFormat(digits = 2))
-      ),
-      bordered = TRUE,
-      highlight = TRUE,
-      striped = FALSE,
-      theme = reactableTheme(
-        color = colors$text,
-        backgroundColor = "transparent",
-        borderColor = colors$accent,
-        highlightColor = paste0(colors$accent, "33"),
-        headerStyle = list(
-          backgroundColor = colors$bg,
-          color = colors$text,
-          fontFamily = colors$font,
-          borderBottom = paste0("1px solid ", colors$accent)
-        ),
-        cellStyle = list(
-          fontFamily = colors$font,
-          transition = "all 0.3s"
-        )
-      )
-    )
+    colors <- get_plot_colors(input$dark_mode_toggle)
+    plot_top_players_table(filtered(), colors)
   })
   
   output$radarPlot <- renderPlotly({
-    colors <- get_plot_colors()
+    colors <- get_plot_colors(input$dark_mode_toggle)
     req(input$radarPlayer)
-    player_stats <- players_filtered %>% filter(full_name == input$radarPlayer)
-    df <- data.frame(
-      metric = c("Goals", "Assists", "Clean Sheets", "Minutes", "Total Points"),
-      value = c(
-        player_stats$goals_scored,
-        player_stats$assists,
-        player_stats$clean_sheets,
-        player_stats$minutes / max(players_filtered$minutes, na.rm = TRUE) * 100,
-        player_stats$total_points
-      )
-    )
-    plot_ly(
-      type = 'scatterpolar',
-      r = df$value,
-      theta = df$metric,
-      fill = 'toself',
-      marker = list(color = colors$secondary),
-      fillcolor = paste0(colors$secondary, "33"),
-      line = list(color = colors$accent, width = 2)
-    ) %>%
-      layout(
-        polar = list(
-          radialaxis = list(
-            visible = TRUE,
-            color = colors$text,
-            gridcolor = paste0(colors$axis, "66"),
-            range = c(0, max(df$value, na.rm = TRUE) * 1.1)
-          ),
-          angularaxis = list(color = colors$text)
-        ),
-        showlegend = FALSE,
-        font = list(family = colors$font, color = colors$text),
-        plot_bgcolor = "transparent",
-        paper_bgcolor = "transparent"
-      ) %>%
-      animation_opts(500, easing = "cubic-in-out")
+    plot_radar_chart(players_filtered, input$radarPlayer, colors)
   })
   
   output$comparisonPlot <- renderPlotly({
     req(input$comparePlayer1, input$comparePlayer2)
-    colors <- get_plot_colors()
-    stats <- c("goals_scored", "assists", "clean_sheets", "total_points", "minutes")
-    player1 <- players_filtered %>% filter(full_name == input$comparePlayer1)
-    player2 <- players_filtered %>% filter(full_name == input$comparePlayer2)
-    df <- data.frame(
-      Stat = c("Goals", "Assists", "Clean Sheets", "Total Points", "Minutes"),
-      Player1 = as.numeric(player1[stats]),
-      Player2 = as.numeric(player2[stats])
-    )
-    plot_ly(df, x = ~Stat) %>%
-      add_bars(y = ~Player1, name = input$comparePlayer1, marker = list(color = colors$accent)) %>%
-      add_bars(y = ~Player2, name = input$comparePlayer2, marker = list(color = colors$secondary)) %>%
-      layout(
-        barmode = 'group',
-        yaxis = list(title = '', color = colors$text),
-        xaxis = list(title = '', color = colors$text),
-        font = list(family = colors$font, color = colors$text),
-        plot_bgcolor = "transparent",
-        paper_bgcolor = "transparent",
-        hoverlabel = list(
-          bgcolor = colors$bg,
-          font = list(color = colors$text, family = colors$font),
-          bordercolor = colors$accent
-        )
-      ) %>%
-      animation_opts(500, easing = "cubic-in-out")
+    colors <- get_plot_colors(input$dark_mode_toggle)
+    plot_comparison_chart(players_filtered, input$comparePlayer1, input$comparePlayer2, colors)
   })
   
   output$positionBarChart <- renderPlotly({
-    colors <- get_plot_colors()
-    df <- players_filtered %>%
-      group_by(position) %>%
-      summarise(Count = n())
-    plot_ly(df, x = ~position, y = ~Count, type = 'bar', marker = list(color = colors$accent)) %>%
-      layout(
-        xaxis = list(title = "Position", color = colors$text),
-        yaxis = list(title = "Number of Players", color = colors$text),
-        title = list(text = "Position Distribution", font = list(size = 20, color = colors$text, family = colors$font)),
-        font = list(family = colors$font, color = colors$text),
-        plot_bgcolor = "transparent",
-        paper_bgcolor = "transparent"
-      ) %>%
-      animation_opts(500, easing = "cubic-in-out")
+    colors <- get_plot_colors(input$dark_mode_toggle)
+    plot_position_distribution(players_filtered, colors)
   })
   
   output$topTeamsPlot <- renderPlotly({
-    colors <- get_plot_colors()
-    df <- players_filtered %>%
-      group_by(TEAMS) %>%
-      summarise(TotalPoints = sum(total_points)) %>%
-      arrange(desc(TotalPoints)) %>%
-      head(10)
-    plot_ly(df, x = ~reorder(TEAMS, TotalPoints), y = ~TotalPoints, type = 'bar', marker = Ulist(color = colors$secondary)) %>%
-      layout(
-        xaxis = list(title = "Team", color = colors$text),
-        yaxis = list(title = "Total Points", color = colors$text),
-        title = list(text = "Top Teams", font = list(size = 20, color = colors$text, family = colors$font)),
-        font = list(family = colors$font, color = colors$text),
-        plot_bgcolor = "transparent",
-        paper_bgcolor = "transparent"
-      ) %>%
-      animation_opts(500, easing = "cubic-in-out")
+    colors <- get_plot_colors(input$dark_mode_toggle)
+    plot_top_teams(players_filtered, colors)
   })
   
   output$teamSquadTable <- renderReactable({
-    colors <- get_plot_colors()
+    colors <- get_plot_colors(input$dark_mode_toggle)
     req(input$selectTeamForSquad)
-    data <- players_filtered %>%
-      filter(TEAMS == input$selectTeamForSquad) %>%
-      select(Player = full_name, Position = position, `Total Points` = total_points, Cost = cost_million) %>%
-      arrange(Position, desc(`Total Points`))
-    
-    if (nrow(data) == 0) {
-      return(reactable(
-        data.frame(Message = "No players match the selected team"),
-        theme = reactableTheme(
-          color = colors$text,
-          backgroundColor = "transparent",
-          borderColor = colors$accent,
-          headerStyle = list(
-            backgroundColor = colors$bg,
-            color = colors$text,
-            fontFamily = colors$font,
-            borderBottom = paste0("1px solid ", colors$accent)
-          ),
-          cellStyle = list(
-            fontFamily = colors$font,
-            transition = "all 0.3s"
-          )
-        )
-      ))
-    }
-    
-    reactable(
-      data,
-      columns = list(
-        Player = colDef(minWidth = 150),
-        Position = colDef(minWidth = 100),
-        `Total Points` = colDef(minWidth = 100),
-        Cost = colDef(minWidth = 100, format = colFormat(prefix = "£", digits = 1))
-      ),
-      bordered = TRUE,
-      highlight = TRUE,
-      striped = FALSE,
-      theme = reactableTheme(
-        color = colors$text,
-        backgroundColor = "transparent",
-        borderColor = colors$accent,
-        highlightColor = paste0(colors$accent, "33"),
-        headerStyle = list(
-          backgroundColor = colors$bg,
-          color = colors$text,
-          fontFamily = colors$font,
-          borderBottom = paste0("1px solid ", colors$accent)
-        ),
-        cellStyle = list(
-          fontFamily = colors$font,
-          transition = "all 0.3s"
-        )
-      )
-    )
+    plot_team_squad_table(players_filtered, input$selectTeamForSquad, colors)
   })
 }
 
