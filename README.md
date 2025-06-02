@@ -36,5 +36,6 @@ An interactive and visually rich dashboard built in **R Shiny** for analyzing Fa
 - Gameweek-wise predictions  
 - Historical trend analysis  
 - Export to Excel or PDF reports
+![Screenshot (54)](https://github.com/user-attachments/assets/8fff52ac-a993-466b-85ec-d779eb9fc932)
 
 
