@@ -38,4 +38,8 @@ An interactive and visually rich dashboard built in **R Shiny** for analyzing Fa
 - Export to Excel or PDF reports
 ![Screenshot (54)](https://github.com/user-attachments/assets/8fff52ac-a993-466b-85ec-d779eb9fc932)
 
+## 👤 About the Author
+
+This project is maintained by **Dhruv Achar**.  
+- GitHub: [dhruvachar](https://github.com/dhruvachar)
 
